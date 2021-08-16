@@ -1,0 +1,65 @@
+#!/bin/sh
+ns_flag=''
+kube_config=''
+configmap=''
+
+# Loop through options to grab what we need
+while test $# -gt 0; do
+  case "$1" in
+    -n|--namespace )
+      shift
+      ns_flag=$1
+      shift
+    ;;
+    -k|--kubeconfig )
+      shift
+      kube_config=$1
+      shift
+    ;;
+    -* )
+      echo "Option $1 not supported, run 'kubectl viewconfig help' for available options and examples."
+      exit 1
+    ;;
+    help )
+      echo "kubectl viewconfig options:\n\t-n (or --namespace): specify the namespace context\n\t-k (or --kubeconfig): specify the kubeconfig context\nkubectl viewconfig example:\n\tkubectl viewconfig -k ~/mykubeconfig -n mynamespace myconfigmapname"
+      exit 0
+    ;;
+    * )
+      configmap=$1
+      shift
+    ;;
+  esac
+done
+
+# Start with base command
+kubectl_command="kubectl get configmap "
+
+# Exit if no configmap name provided
+if [[ $configmap != '' ]]; then
+  kubectl_command+="${configmap} "
+else
+  echo "ERROR: No configmap name provided, run 'kubectl viewconfig help' for available options and examples."
+  exit 1
+fi
+
+# Tack on ns flag as needed
+if [[ $ns_flag != '' ]]; then
+  kubectl_command+="-n ${ns_flag} "
+fi
+
+# Tack on kube config flag as needed
+if [[ $kube_config != '' ]]; then
+  kubectl_command+="--kubeconfig ${kube_config} "
+fi
+
+# Check if the configmap exists
+if [[ ! $($kubectl_command 2> /dev/null) ]]; then
+  echo "ERROR: configmap not found, run 'kubectl viewconfig help' for available options and examples."
+  exit 1
+fi
+
+# Add our fancy dump of config
+kubectl_command+="-o go-template='{{range \$k,\$v := .data}}{{printf \"%s: \n---\n\" \$k}}{{\$v}}{{\"\n\n\"}}{{end}}'"
+
+# Execute
+eval $kubectl_command
