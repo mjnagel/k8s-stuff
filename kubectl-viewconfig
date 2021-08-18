@@ -2,6 +2,8 @@
 ns_flag=''
 kube_config=''
 configmap=''
+label=''
+multiple_possible=''
 
 # Loop through options to grab what we need
 while test $# -gt 0; do
@@ -16,12 +18,17 @@ while test $# -gt 0; do
       kube_config=$1
       shift
     ;;
+    -l|--label )
+      shift
+      label=$1
+      shift
+    ;;
     -* )
       echo "Option $1 not supported, run 'kubectl viewconfig help' for available options and examples."
       exit 1
     ;;
     help )
-      echo "kubectl viewconfig options:\n\t-n (or --namespace): specify the namespace context\n\t-k (or --kubeconfig): specify the kubeconfig context\nkubectl viewconfig example:\n\tkubectl viewconfig -k ~/mykubeconfig -n mynamespace myconfigmapname"
+      echo "kubectl viewconfig options:\n\t-n (or --namespace): specify the namespace context\n\t-k (or --kubeconfig): specify the kubeconfig context\n\t-l (or --label): specify a label to use for grabbing configmaps' contents\nkubectl viewconfig examples:\n\tkubectl viewconfig -k ~/mykubeconfig -n mynamespace myconfigmapname\n\tkubectl viewconfig -k ~/mykubeconfig -n mynamespace -l app=helloworld"
       exit 0
     ;;
     * )
@@ -37,9 +44,18 @@ kubectl_command="kubectl get configmap "
 # Exit if no configmap name provided
 if [[ $configmap != '' ]]; then
   kubectl_command+="${configmap} "
+  if [[ $label != '' ]]; then
+    echo "ERROR: Both configmap name and label provided. Only one of these options can be passed in a single command.\nRun 'kubectl viewconfig help' for available options and examples."
+    exit 1
+  fi
 else
-  echo "ERROR: No configmap name provided, run 'kubectl viewconfig help' for available options and examples."
-  exit 1
+  if [[ $label != '' ]]; then
+    kubectl_command+="-l $label "
+    multiple_possible="true"
+  else
+    echo "ERROR: No configmap name provided, run 'kubectl viewconfig help' for available options and examples."
+    exit 1
+  fi
 fi
 
 # Tack on ns flag as needed
@@ -59,7 +75,11 @@ if [[ ! $($kubectl_command 2> /dev/null) ]]; then
 fi
 
 # Add our fancy dump of config
-kubectl_command+="-o go-template='{{range \$k,\$v := .data}}{{printf \"%s: \n---\n\" \$k}}{{\$v}}{{\"\n\n\"}}{{end}}'"
+if [[ $multiple_possible == "true" ]]; then
+  kubectl_command+="-o go-template='{{range \$configmap,\$contents := .items}}{{printf \"------\nConfigmap \`%s\`: \n------\n\" \$contents.metadata.name}}{{range \$k,\$v := \$contents.data}}{{printf \"Key \`%s\`: \n---\n\" \$k}}{{\$v}}{{\"\n\n\"}}{{end}}{{end}}'"
+else
+  kubectl_command+="-o go-template='{{printf \"------\nConfigmap \`%s\`: \n------\n\" .metadata.name}}{{range \$k,\$v := .data}}{{printf \"Key \`%s\`: \n---\n\" \$k}}{{\$v}}{{\"\n\n\"}}{{end}}'"
+fi
 
 # Execute
 eval $kubectl_command
