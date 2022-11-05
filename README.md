@@ -1,4 +1,4 @@
-# k8s-stuff
+# k8s-stuffz
 
 ## kubectl-viewconfig
 
